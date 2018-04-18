@@ -1,21 +1,23 @@
 package com.example.android.shushme;
 
 /*
-* Copyright (C) 2017 The Android Open Source Project
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*  	http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (C) 2017 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *  	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+import android.content.ContentValues;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -29,21 +31,27 @@ import android.view.View;
 import android.widget.CheckBox;
 import android.widget.Toast;
 
+import com.example.android.shushme.provider.PlaceContract;
+import com.example.android.shushme.provider.PlaceContract.PlaceEntry;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.Places;
+import com.google.android.gms.location.places.ui.PlacePicker;
+import com.google.android.gms.location.places.ui.PlacePicker.IntentBuilder;
 
-public class MainActivity extends AppCompatActivity implements
-        ConnectionCallbacks,
-        OnConnectionFailedListener {
+public class MainActivity extends AppCompatActivity
+        implements ConnectionCallbacks, OnConnectionFailedListener {
 
     // Constants
     public static final String TAG = MainActivity.class.getSimpleName();
     private static final int PERMISSIONS_REQUEST_FINE_LOCATION = 111;
-
+    private static final int PLACE_PICKER_REQUEST = 112;
     // Member variables
     private PlaceListAdapter mAdapter;
     private RecyclerView mRecyclerView;
@@ -55,6 +63,7 @@ public class MainActivity extends AppCompatActivity implements
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -64,17 +73,16 @@ public class MainActivity extends AppCompatActivity implements
         mAdapter = new PlaceListAdapter(this);
         mRecyclerView.setAdapter(mAdapter);
 
-
         // Build up the LocationServices API client
         // Uses the addApi method to request the LocationServices API
         // Also uses enableAutoManage to automatically when to connect/suspend the client
-        GoogleApiClient client = new GoogleApiClient.Builder(this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(LocationServices.API)
-                .addApi(Places.GEO_DATA_API)
-                .enableAutoManage(this, this)
-                .build();
+        GoogleApiClient client = new GoogleApiClient.Builder(this).addConnectionCallbacks(this)
+                                                                  .addOnConnectionFailedListener(
+                                                                          this)
+                                                                  .addApi(LocationServices.API)
+                                                                  .addApi(Places.GEO_DATA_API)
+                                                                  .enableAutoManage(this, this)
+                                                                  .build();
 
     }
 
@@ -85,6 +93,7 @@ public class MainActivity extends AppCompatActivity implements
      */
     @Override
     public void onConnected(@Nullable Bundle connectionHint) {
+
         Log.i(TAG, "API Client Connection Successful!");
     }
 
@@ -95,6 +104,7 @@ public class MainActivity extends AppCompatActivity implements
      */
     @Override
     public void onConnectionSuspended(int cause) {
+
         Log.i(TAG, "API Client Connection Suspended!");
     }
 
@@ -105,6 +115,7 @@ public class MainActivity extends AppCompatActivity implements
      */
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult result) {
+
         Log.e(TAG, "API Client Connection Failed!");
     }
 
@@ -114,35 +125,75 @@ public class MainActivity extends AppCompatActivity implements
      * @param view
      */
     public void onAddPlaceButtonClicked(View view) {
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, getString(R.string.need_location_permission_message), Toast.LENGTH_LONG).show();
+
+        if (ActivityCompat
+                .checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, getString(R.string.need_location_permission_message),
+                    Toast.LENGTH_LONG).show();
             return;
         }
-        // TODO (1) Create a PlacePicker.IntentBuilder and call startActivityForResult
-        // TODO (2) Handle GooglePlayServices exceptions
-        Toast.makeText(this, getString(R.string.location_permissions_granted_message), Toast.LENGTH_LONG).show();
+
+        PlacePicker.IntentBuilder builder = new IntentBuilder();
+        Intent intent = null;
+        try {
+            intent = builder.build(this);
+        }
+        catch (GooglePlayServicesRepairableException | GooglePlayServicesNotAvailableException e) {
+            Log.e(TAG, String.format("Google Play Services Not Available [%s]", e.getMessage()));
+        }
+        startActivityForResult(intent, PLACE_PICKER_REQUEST);
+
+        Toast.makeText(this, getString(R.string.location_permissions_granted_message),
+                Toast.LENGTH_LONG).show();
     }
 
-    // TODO (3) Implement onActivityResult and check that the requestCode is PLACE_PICKER_REQUEST
-    // TODO (4) In onActivityResult, use PlacePicker.getPlace to extract the Place ID and insert it into the DB
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        if (requestCode == PLACE_PICKER_REQUEST && resultCode == RESULT_OK) {
+
+            Place place = PlacePicker.getPlace(this, data);
+            if (place == null) {
+
+                Log.i(TAG, "No Place Selected");
+                return;
+
+            }
+
+            String placeName = place.getName().toString();
+            String placeAddress = place.getAddress().toString();
+            String placeId = place.getId();
+
+            ContentValues values = new ContentValues();
+            values.put(PlaceEntry.COLUMN_PLACE_ID, placeId);
+            getContentResolver().insert(PlaceEntry.CONTENT_URI, values);
+
+
+        }
+
+    }
 
     @Override
     public void onResume() {
+
         super.onResume();
 
         // Initialize location permissions checkbox
         CheckBox locationPermissions = (CheckBox) findViewById(R.id.location_permission_checkbox);
         if (ActivityCompat.checkSelfPermission(MainActivity.this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                android.Manifest.permission.ACCESS_FINE_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED) {
             locationPermissions.setChecked(false);
-        } else {
+        }
+        else {
             locationPermissions.setChecked(true);
             locationPermissions.setEnabled(false);
         }
     }
 
     public void onLocationPermissionClicked(View view) {
+
         ActivityCompat.requestPermissions(MainActivity.this,
                 new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
                 PERMISSIONS_REQUEST_FINE_LOCATION);
